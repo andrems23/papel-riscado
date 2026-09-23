@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#123A32" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="styles.css" />
+  <title>Concilia</title>
+
+  <!-- iOS ignora o manifest.json; precisa destas tags para virar "app" na tela inicial -->
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Concilia" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="icon" href="icon-192.png" type="image/png" />
+</head>
+<body>
+  <main class="app-shell">
+    <section id="homeView" class="view active" aria-labelledby="homeTitle">
+      <header class="topbar">
+        <div><p class="eyebrow">CONTROLE DE DESPESAS</p><h1 id="homeTitle"></h1></div>
+        <div class="header-actions">
+          <button id="themeBtn" class="icon-button" title="Alternar tema" aria-label="Ativar modo escuro">◐</button>
+          <button id="exportBtn" class="icon-button" title="Exportar CSV" aria-label="Exportar CSV">⇩</button>
+        </div>
+      </header>
+
+      <section class="balance-card">
+        <p>Total conciliado</p><strong id="monthTotal">R$ 0,00</strong>
+      </section>
+
+      <section class="section-heading"><div><p class="eyebrow">ÚLTIMOS REGISTROS</p><h2>Despesas</h2></div></section>
+      <div id="receiptList" class="receipt-list"></div>
+      <div id="emptyState" class="empty-state"><div>⌁</div><h2>Comece por um recibo</h2><p>Fotografe uma despesa e mantenha sua conciliação organizada.</p></div>
+    </section>
+
+    <section id="captureView" class="view" aria-labelledby="captureTitle">
+      <header class="simple-header"><button class="back-button" data-go="homeView">‹</button><h1 id="captureTitle">Novo recibo</h1><span></span></header>
+      <div id="cameraStage" class="camera-stage">
+        <div class="scan-frame"><span></span><span></span><span></span><span></span><b></b></div>
+        <p>Posicione o recibo dentro da moldura</p>
+      </div>
+      <div class="capture-actions">
+        <label class="gallery-button" title="Escolher foto"><input id="galleryInput" type="file" accept="image/*" />▧</label>
+        <label class="shutter" title="Tirar foto"><input id="cameraInput" type="file" accept="image/*" capture="environment" /><i></i></label>
+        <button id="manualBtn" class="gallery-button" title="Preencher manualmente">✎</button>
+      </div>
+      <p class="privacy-note">Suas imagens e lançamentos permanecem neste dispositivo.</p>
+    </section>
+
+    <section id="formView" class="view" aria-labelledby="formTitle">
+      <header class="simple-header"><button class="back-button" data-go="captureView">‹</button><h1 id="formTitle">Conferir recibo</h1><button id="deletePhotoBtn" class="text-button">Remover</button></header>
+      <div class="form-scroll">
+        <button id="previewButton" class="image-preview" type="button"><img id="receiptImage" alt="Foto do recibo" /><span id="noImage">Sem imagem · lançamento manual</span></button>
+        <div id="extracting" class="extracting hidden"><span></span>Lendo informações do recibo…</div>
+        <form id="receiptForm">
+          <label>Valor total <div class="money-input"><span>R$</span><input id="amount" inputmode="decimal" placeholder="0,00" required /></div></label>
+          <label>Estabelecimento <input id="merchant" autocomplete="organization" placeholder="Ex.: Restaurante Sabor & Cia" required /></label>
+          <label>Categoria <select id="category"><option>Restaurante</option><option>Posto de gasolina</option><option>Mercado</option><option>Transporte</option><option>Farmácia</option><option>Hospedagem</option><option>Outros</option></select></label>
+          <div class="two-fields"><label>Data <input id="date" type="date" required /></label><label>Hora <input id="time" type="time" required /></label></div>
+          <label>Observação <input id="note" placeholder="Opcional" /></label>
+          <button class="primary-button" type="submit">Salvar lançamento</button>
+        </form>
+      </div>
+    </section>
+
+    <nav class="bottom-nav"><button data-go="homeView" class="nav-item selected"><span>⌂</span>Início</button><button data-go="captureView" class="scan-button" aria-label="Escanear recibo">＋</button><button id="navExport" class="nav-item"><span>⇩</span>Exportar</button></nav>
+  </main>
+  <div id="toast" role="status"></div>
+  <dialog id="imageDialog"><button id="closeDialog">×</button><img id="dialogImage" alt="Recibo ampliado" /></dialog>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
