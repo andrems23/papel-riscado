@@ -105,7 +105,8 @@ async function compressImage(file) {
 
 // Preenche os campos do formulário com a data e hora atuais.
 function openForm() {
-  $('#receiptForm').reset();
+$('#receiptForm').reset();
+  $('#deleteReceiptBtn').classList.toggle('hidden',!editingId);
   const now = new Date();
   $('#date').value = now.toISOString().slice(0, 10);
   $('#time').value = now.toTimeString().slice(0, 5);
@@ -317,7 +318,20 @@ function exportCSV() {
   toast('Planilha CSV baixada');
 }
 
-$('#exportBtn').onclick = exportCSV;
+$('#deleteReceiptBtn').onclick = () => {
+  if (!editingId || !confirm('Apagar esta nota emitida? Esta ação não pode ser desfeita.')) return;
+  const id = editingId;
+  const transaction = db.transaction('receipts', 'readwrite');
+  transaction.objectStore('receipts').delete(id);
+  transaction.oncomplete = () => {
+    records = records.filter(receipt => receipt.id !== id);
+    editingId = null;
+    selectedImage = null;
+    render();
+    go('homeView');
+    toast('Nota apagada');
+  };
+};$('#exportBtn').onclick = exportCSV;
 $('#navExport').onclick = exportCSV;
 // Exibe mensagem curta informando ações do usuário.
 function toast(message) {

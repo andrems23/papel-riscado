@@ -58,10 +58,13 @@
         <form id="receiptForm">
           <label>Valor total <div class="money-input"><span>R$</span><input id="amount" inputmode="decimal" placeholder="0,00" required /></div></label>
           <label>Estabelecimento <input id="merchant" autocomplete="organization" placeholder="Ex.: Restaurante Sabor & Cia" required /></label>
-          <label>Categoria <select id="category"><option>Restaurante</option><option>Posto de gasolina</option><option>Mercado</option><option>Transporte</option><option>Farmácia</option><option>Hospedagem</option><option>Outros</option></select></label>
+          <label>Categoria <select id="category"><option>Saúde</option><option>Alimentação</option><option>Transporte</option><option>Cuidados pessoais</option><option>laser</option><option>prestadores de serviço</option><option>despesas da casa</option><option>outros</option></select></label>
           <div class="two-fields"><label>Data <input id="date" type="date" required /></label><label>Hora <input id="time" type="time" required /></label></div>
           <label>Observação <input id="note" placeholder="Opcional" /></label>
-          <button class="primary-button" type="submit">Salvar lançamento</button>
+          <div class="form-actions">
+            <button class="primary-button" type="submit">Salvar lançamento</button>
+            <button id="deleteReceiptBtn" class="delete-button hidden" type="button">Apagar nota</button>
+          </div>
         </form>
       </div>
     </section>

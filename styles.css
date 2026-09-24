@@ -71,4 +71,6 @@ body.dark-theme .image-preview { background: #193229; }
 body.dark-theme .bottom-nav { border-color: var(--line); background: #14271f; }
 body.dark-theme .scan-button { border-color: #14271f; }
 body.dark-theme .text-button { color: #b3d0c1; }
-body.dark-theme .extracting { background: #2b4725; }
+body.dark-theme .extracting { background: #2b4725; }.form-actions { display: flex; gap: 10px; }
+.form-actions > button { flex: 1; }
+.delete-button { margin-top: 8px; padding: 14px; border: 1px solid #b83f36; border-radius: 13px; background: transparent; color: #b83f36; font-weight: 700; cursor: pointer; }
