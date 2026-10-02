@@ -5,6 +5,7 @@ let selectedImage = null;
 let records = [];
 let db;
 let editingId = null;
+let ocrRunId = 0;
 
 // Alterna tema e salva.
 function setTheme(theme) {
@@ -30,6 +31,7 @@ dbRequest.onsuccess = event => {
 
 // Troca a tela ativa do app conforme o botão selecionado.
 function go(viewId) {
+  if (viewId !== 'formView') ocrRunId++;
   views.forEach(view => view.classList.toggle('active', view.id === viewId));
   document.querySelectorAll('[data-go]').forEach(button => {
     button.classList.toggle('selected', button.dataset.go === viewId);
@@ -64,10 +66,12 @@ $('#deletePhotoBtn').onclick = () => {
 // Recebe a imagem e a prepara para o formulário e OCR.
 async function handleFile(file) {
   if (!file) return;
+  const runId = ++ocrRunId;
   editingId = null;
   selectedImage = await compressImage(file);
+  if (runId !== ocrRunId) return;
   openForm();
-  detectText(file);
+  detectText(file, runId);
 }
 
 function readFileAsDataUrl(file) {
@@ -117,35 +121,71 @@ $('#receiptForm').reset();
 }
 
 // Tenta ler os dados do recibo automaticamente por OCR.
-async function detectText(file) {
+async function prepareOCRImage(file) {
+  const source = URL.createObjectURL(file);
+  try {
+    const image = await new Promise((resolve, reject) => {
+      const element = new Image();
+      element.onload = () => resolve(element);
+      element.onerror = reject;
+      element.src = source;
+    });
+    const scale = Math.min(1.5, 2400 / Math.max(image.width, image.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(image.width * scale));
+    canvas.height = Math.max(1, Math.round(image.height * scale));
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+    for (let i = 0; i < pixels.data.length; i += 4) {
+      const gray = 0.299 * pixels.data[i] + 0.587 * pixels.data[i + 1] + 0.114 * pixels.data[i + 2];
+      const contrasted = Math.max(0, Math.min(255, (gray - 128) * 1.25 + 128));
+      pixels.data[i] = pixels.data[i + 1] = pixels.data[i + 2] = contrasted;
+    }
+    context.putImageData(pixels, 0, 0);
+    return await new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Falha ao preparar imagem')), 'image/png'));
+  } finally {
+    URL.revokeObjectURL(source);
+  }
+}
+
+async function detectText(file, runId) {
   const status = $('#extracting');
+  const statusText = $('#ocr-status');
+  statusText.textContent = 'Lendo informações do recibo…';
   status.classList.remove('hidden');
   try {
     let text = '';
-    // Usa o OCR nativo quando o navegador o disponibiliza.
-    if ('TextDetector' in window) {
-      const bitmap = await createImageBitmap(file);
-      const blocks = await new TextDetector().detect(bitmap);
-      text = blocks.map(block => block.rawValue).join('\n');
-    }
-    // Tesseract é a alternativa de OCR em português.
+    // Tesseract é o mecanismo principal para manter a leitura em português previsível.
     if (!text && window.Tesseract) {
-      const result = await Tesseract.recognize(file, 'por', {
+      const preparedImage = await prepareOCRImage(file);
+      const result = await Tesseract.recognize(preparedImage, 'por', {
         logger: message => {
-          if (message.status === 'recognizing text') {
-            status.lastChild.textContent = ` Lendo recibo… ${Math.round(message.progress * 100)}%`;
-          }
+          if (runId === ocrRunId && message.status === 'recognizing text')
+            statusText.textContent = `Lendo recibo… ${Math.round(message.progress * 100)}%`;
         },
       });
       text = result.data.text;
     }
+    // TextDetector fica como alternativa caso o script externo não esteja disponível.
+    if (!text && 'TextDetector' in window) {
+      const bitmap = await createImageBitmap(file);
+      try {
+        const blocks = await new TextDetector().detect(bitmap);
+        text = blocks.map(block => block.rawValue).join('\n');
+      } finally {
+        bitmap.close();
+      }
+    }
+    if (runId !== ocrRunId) return;
     if (!text.trim()) throw new Error('OCR sem texto');
     parseReceipt(text);
     toast('Campos encontrados — confira antes de salvar');
   } catch {
+    if (runId !== ocrRunId) return;
     toast('Não foi possível ler automaticamente. Confira e preencha os campos.');
   } finally {
-    status.classList.add('hidden');
+    if (runId === ocrRunId) status.classList.add('hidden');
   }
 }
 
@@ -154,8 +194,16 @@ function parseReceipt(text) {
   const lines = text.split(/\n+/).map(line => line.trim()).filter(Boolean);
   const money = [...text.matchAll(/(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2}|\d+\.\d{2})/g)]
     .map(match => match[1]);
-  // Em geral, o último valor do cupom é o total pago.
-  if (money.length) $('#amount').value = money[money.length - 1];
+  const moneyPattern = '(?:R\\$\\s*)?([0-9]{1,3}(?:\\.[0-9]{3})*,[0-9]{2}|[0-9]+\\.[0-9]{2})';
+  const totalLine = lines.find(line => /\b(total|valor\s+a\s+pagar|total\s+a\s+pagar)\b/i.test(line));
+  const totalMatch = totalLine?.match(new RegExp(`(?:total|valor\\s+a\\s+pagar|total\\s+a\\s+pagar)\\s*:?\\s*${moneyPattern}`, 'i'))
+    || totalLine?.match(new RegExp(`${moneyPattern}\\s*(?:total|valor\\s+a\\s+pagar|total\\s+a\\s+pagar)`, 'i'));
+  // Prefere o valor junto ao rótulo de total; se não existir, usa um fallback sem troco.
+  const fallbackMoney = [...text.matchAll(new RegExp(moneyPattern, 'g'))]
+    .filter(match => !/\btroco\b/i.test(text.slice(Math.max(0, match.index - 24), match.index)));
+  if (totalMatch) $('#amount').value = totalMatch[1];
+  else if (fallbackMoney.length) $('#amount').value = fallbackMoney[fallbackMoney.length - 1][1];
+  else if (money.length) $('#amount').value = money[money.length - 1];
   const date = text.match(/(\d{2})[/-](\d{2})[/-](\d{2,4})/);
   if (date) {
     const year = date[3].length === 2 ? `20${date[3]}` : date[3];
@@ -163,17 +211,31 @@ function parseReceipt(text) {
   }
   const time = text.match(/\b([01]\d|2[0-3]):([0-5]\d)(?::\d{2})?\b/);
   if (time) $('#time').value = `${time[1]}:${time[2]}`;
-  const merchant = lines.find(line => (
-    /[A-Za-zÀ-ÿ]{3}/.test(line) && !/(cnpj|cpf|data|total|valor|cliente)/i.test(line)
-  ));
+  const normalizeText = value => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const excludedMerchantLine = /\b(cnpj|cpf|cnf|data|hora|total|subtotal|valor|cliente|consumidor|documento|auxiliar|nota fiscal|chave|protocolo|inscricao|ie)\b/i;
+  const merchant = lines
+    .map((line, index) => {
+      const normalized = normalizeText(line);
+      let score = 0;
+      if (/[A-Za-zÀ-ÿ]{3}/.test(line)) score += 2;
+      if (/\b(ltda|me|eireli|sa|mercado|supermercado|restaurante|padaria|posto|drogaria|farmacia|hotel|loja|comercio|auto pecas)\b/i.test(normalized)) score += 5;
+      if (/\d/.test(line)) score -= 2;
+      if (line.length < 4 || line.length > 64) score -= 3;
+      if (excludedMerchantLine.test(normalized)) score -= 10;
+      return { line, index, score };
+    })
+    .filter(candidate => candidate.score > 0)
+    .sort((a, b) => b.score - a.score || a.index - b.index)[0]?.line;
   if (merchant) $('#merchant').value = merchant;
   const categories = [
-    ['posto', 'Posto de gasolina'], ['combust', 'Posto de gasolina'],
+    ['posto', 'Posto de gasolina'], ['combust', 'Posto de gasolina'], ['gasolina', 'Posto de gasolina'], ['etanol', 'Posto de gasolina'], ['diesel', 'Posto de gasolina'],
     ['restaur', 'Restaurante'], ['lanchon', 'Restaurante'],
-    ['mercado', 'Mercado'], ['supermerc', 'Mercado'],
-    ['farm', 'Farmácia'], ['hotel', 'Hospedagem'],
+    ['padaria', 'Padaria'], ['acougue', 'Mercado'], ['mercado', 'Mercado'], ['supermercado', 'Mercado'],
+    ['drogaria', 'Farmácia'], ['farmacia', 'Farmácia'], ['hospital', 'Saúde'], ['clinica', 'Saúde'],
+    ['uber', 'Transporte'], ['estacionamento', 'Estacionamento'], ['oficina', 'Manutenção do veículo'], ['auto pecas', 'Manutenção do veículo'], ['hotel', 'Hospedagem'],
   ];
-  const category = categories.find(([term]) => text.toLowerCase().includes(term));
+  const normalizedText = normalizeText(text);
+  const category = categories.find(([term]) => normalizedText.includes(normalizeText(term)));
   if (category) $('#category').value = category[1];
 }
 
@@ -196,7 +258,7 @@ function normalizeAmount(value) {
 $('#receiptForm').onsubmit = event => {
   event.preventDefault();
   const amount = normalizeAmount($('#amount').value);
-  if (!amount) {
+  if (!Number.isFinite(amount) || amount <= 0) {
     toast('Informe um valor válido');
     return;
   }

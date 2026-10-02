@@ -54,11 +54,11 @@
       <header class="simple-header"><button class="back-button" data-go="captureView">‹</button><h1 id="formTitle">Conferir recibo</h1><button id="deletePhotoBtn" class="text-button">Remover</button></header>
       <div class="form-scroll">
         <button id="previewButton" class="image-preview" type="button"><img id="receiptImage" alt="Foto do recibo" /><span id="noImage">Sem imagem · lançamento manual</span></button>
-        <div id="extracting" class="extracting hidden"><span></span>Lendo informações do recibo…</div>
+        <div id="extracting" class="extracting hidden"><span></span><span id="ocr-status">Lendo informações do recibo…</span></div>
         <form id="receiptForm">
           <label>Valor total <div class="money-input"><span>R$</span><input id="amount" inputmode="decimal" placeholder="0,00" required /></div></label>
           <label>Estabelecimento <input id="merchant" autocomplete="organization" placeholder="Ex.: Restaurante Sabor & Cia" required /></label>
-          <label>Categoria <select id="category"><option>Saúde</option><option>Alimentação</option><option>Transporte</option><option>Cuidados pessoais</option><option>laser</option><option>prestadores de serviço</option><option>despesas da casa</option><option>outros</option></select></label>
+          <label>Categoria <select id="category"><option>Saúde</option><option>Alimentação</option><option>Transporte</option><option>Cuidados pessoais</option><option>Lazer</option><option>Prestadores de serviço</option><option>Despesas da casa</option><option>Mercado</option><option>Posto de gasolina</option><option>Restaurante</option><option>Padaria</option><option>Farmácia</option><option>Hospedagem</option><option>Estacionamento</option><option>Manutenção do veículo</option><option>Outros</option></select></label>
           <div class="two-fields"><label>Data <input id="date" type="date" required /></label><label>Hora <input id="time" type="time" required /></label></div>
           <label>Observação <input id="note" placeholder="Opcional" /></label>
           <div class="form-actions">
