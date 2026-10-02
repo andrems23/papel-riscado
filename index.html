@@ -58,8 +58,9 @@
         <form id="receiptForm">
           <label>Valor total <div class="money-input"><span>R$</span><input id="amount" inputmode="decimal" placeholder="0,00" required /></div></label>
           <label>Estabelecimento <input id="merchant" autocomplete="organization" placeholder="Ex.: Restaurante Sabor & Cia" required /></label>
-          <label>Categoria <select id="category"><option>Saúde</option><option>Alimentação</option><option>Transporte</option><option>Cuidados pessoais</option><option>Lazer</option><option>Prestadores de serviço</option><option>Despesas da casa</option><option>Mercado</option><option>Posto de gasolina</option><option>Restaurante</option><option>Padaria</option><option>Farmácia</option><option>Hospedagem</option><option>Estacionamento</option><option>Manutenção do veículo</option><option>Outros</option></select></label>
-          <div class="two-fields"><label>Data <input id="date" type="date" required /></label><label>Hora <input id="time" type="time" required /></label></div>
+          <label>Categoria <select id="category" required><option value="">Selecione uma categoria</option><option>Saúde</option><option>Alimentação</option><option>Transporte</option><option>Contas de consumo</option><option>Prestadores de serviço</option></select></label>
+          <label>Forma de pagamento <select id="paymentMethod" required><option value="">Selecione uma forma de pagamento</option><option>Débito</option><option>Crédito</option><option>Transferência</option><option>Dinheiro</option></select></label>
+          <div class="two-fields"><label>Data (DD/MM/AAAA) <input id="date" type="text" inputmode="numeric" autocomplete="off" placeholder="DD/MM/AAAA" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" maxlength="10" required /></label><label>Hora (24h) <input id="time" type="text" inputmode="numeric" autocomplete="off" placeholder="HH:MM" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" maxlength="5" required /></label></div>
           <label>Observação <input id="note" placeholder="Opcional" /></label>
           <div class="form-actions">
             <button class="primary-button" type="submit">Salvar lançamento</button>

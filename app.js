@@ -112,7 +112,7 @@ function openForm() {
 $('#receiptForm').reset();
   $('#deleteReceiptBtn').classList.toggle('hidden',!editingId);
   const now = new Date();
-  $('#date').value = now.toISOString().slice(0, 10);
+  $('#date').value = formatDateInput(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`);
   $('#time').value = now.toTimeString().slice(0, 5);
   if (selectedImage) $('#receiptImage').src = selectedImage;
   else $('#receiptImage').removeAttribute('src');
@@ -189,6 +189,36 @@ async function detectText(file, runId) {
   }
 }
 
+function normalizeCategory(category) {
+  const normalized = String(category || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (['saude', 'farmacia', 'hospital', 'cuidados pessoais'].includes(normalized)) return 'Saúde';
+  if (['alimentacao', 'restaurante', 'mercado', 'padaria'].includes(normalized)) return 'Alimentação';
+  if (['transporte', 'posto de gasolina', 'estacionamento'].includes(normalized)) return 'Transporte';
+  if (['contas de consumo', 'despesas da casa'].includes(normalized)) return 'Contas de consumo';
+  if (['prestadores de servico', 'hospedagem', 'manutencao do veiculo'].includes(normalized)) return 'Prestadores de serviço';
+  return '';
+}
+
+function parseDateValue(value) {
+  const input = String(value || '').trim();
+  let year; let month; let day;
+  const iso = input.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  const brazilian = input.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+  if (iso) [, year, month, day] = iso;
+  else if (brazilian) [, day, month, year] = brazilian;
+  else return '';
+  if (year.length === 2) year = `20${year}`;
+  const y = Number(year); const m = Number(month); const d = Number(day);
+  const parsed = new Date(Date.UTC(y, m - 1, d));
+  if (parsed.getUTCFullYear() !== y || parsed.getUTCMonth() !== m - 1 || parsed.getUTCDate() !== d) return '';
+  return `${year.padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+function formatDateInput(isoDate) {
+  const match = String(isoDate || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : '';
+}
+
 // Extrai valor, data, hora e nome do estabelecimento do texto lido.
 function parseReceipt(text) {
   const lines = text.split(/\n+/).map(line => line.trim()).filter(Boolean);
@@ -204,38 +234,57 @@ function parseReceipt(text) {
   if (totalMatch) $('#amount').value = totalMatch[1];
   else if (fallbackMoney.length) $('#amount').value = fallbackMoney[fallbackMoney.length - 1][1];
   else if (money.length) $('#amount').value = money[money.length - 1];
-  const date = text.match(/(\d{2})[/-](\d{2})[/-](\d{2,4})/);
-  if (date) {
-    const year = date[3].length === 2 ? `20${date[3]}` : date[3];
-    $('#date').value = `${year}-${date[2]}-${date[1]}`;
+  const dateCandidates = [...text.matchAll(/\b(\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b/g)];
+  for (const candidate of dateCandidates) {
+    const isoDate = parseDateValue(candidate[1]);
+    if (isoDate) {
+      $('#date').value = formatDateInput(isoDate);
+      break;
+    }
   }
-  const time = text.match(/\b([01]\d|2[0-3]):([0-5]\d)(?::\d{2})?\b/);
-  if (time) $('#time').value = `${time[1]}:${time[2]}`;
+  const timePattern = /\b([01]?\d|2[0-3]):([0-5]\d)(?::\d{2})?\b/;
+  const linesWithTime = text.split(/\n+/).filter(line => timePattern.test(line));
+  const timeAndDateLine = linesWithTime.find(line => /\d{1,2}[/-]\d{1,2}[/-]\d{2,4}/.test(line));
+  const explicitTimeLine = linesWithTime.find(line => /\b(hora|horario|emissao|emissão|data\s*\/\s*hora)\b/i.test(line));
+  const time = (timeAndDateLine || explicitTimeLine || linesWithTime.at(-1) || '').match(timePattern);
+  if (time) $('#time').value = `${time[1].padStart(2, '0')}:${time[2]}`;
   const normalizeText = value => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  const excludedMerchantLine = /\b(cnpj|cpf|cnf|data|hora|total|subtotal|valor|cliente|consumidor|documento|auxiliar|nota fiscal|chave|protocolo|inscricao|ie)\b/i;
+  const normalizedText = normalizeText(text);
+  if (/\b(debito)\b/i.test(normalizedText)) $('#paymentMethod').value = 'Débito';
+  else if (/\b(credito)\b/i.test(normalizedText)) $('#paymentMethod').value = 'Crédito';
+  else if (/\b(transferencia|pix)\b/i.test(normalizedText)) $('#paymentMethod').value = 'Transferência';
+  else if (/\b(dinheiro|especie)\b/i.test(normalizedText)) $('#paymentMethod').value = 'Dinheiro';
+  const excludedMerchantLine = /\b(cnpj|cpf|cnf|data|hora|total|subtotal|valor|cliente|consumidor|documento|auxiliar|nota fiscal|chave|protocolo|inscricao|ie|danfe|cupom fiscal|sat|nfc-e|nfce|endereco|rua|avenida|av\.?|bairro|cep|telefone|fone|pagamento|tributos|impostos|consulta|operador|caixa|pedido|item|quantidade|desconto|troco)\b/i;
   const merchant = lines
     .map((line, index) => {
-      const normalized = normalizeText(line);
+      const candidateLine = line
+        .replace(/\b(cnpj|cpf)\b\s*:?\s*[\d./-]+/ig, ' ')
+        .replace(/\b(ie|inscricao estadual)\b\s*:?\s*[\d./-]+/ig, ' ')
+        .replace(/^[\d./-]{4,}\s+/, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+      const normalized = normalizeText(candidateLine);
       let score = 0;
-      if (/[A-Za-zÀ-ÿ]{3}/.test(line)) score += 2;
-      if (/\b(ltda|me|eireli|sa|mercado|supermercado|restaurante|padaria|posto|drogaria|farmacia|hotel|loja|comercio|auto pecas)\b/i.test(normalized)) score += 5;
-      if (/\d/.test(line)) score -= 2;
-      if (line.length < 4 || line.length > 64) score -= 3;
+      if (/[A-Za-zÀ-ÿ]{3}/.test(candidateLine)) score += 1;
+      if (/\b(ltda|eireli|perfumaria|mercado|supermercado|restaurante|padaria|posto|drogaria|farmacia|hotel|loja|comercio|auto pecas)\b/i.test(normalized)) score += 5;
+      if (/\d/.test(candidateLine)) score -= 2;
+      if (candidateLine.length < 4 || candidateLine.length > 64) score -= 3;
       if (excludedMerchantLine.test(normalized)) score -= 10;
-      return { line, index, score };
+      if (/^[\d\s./:-]+$/.test(candidateLine)) score -= 10;
+      if (/\b(ltda|eireli|perfumaria|comercio|mercado|supermercado|restaurante|padaria|posto|drogaria|farmacia|hotel|loja)\b/i.test(normalized)) score += 2;
+      return { line: candidateLine, index, score };
     })
-    .filter(candidate => candidate.score > 0)
+    .filter(candidate => candidate.score >= 3)
     .sort((a, b) => b.score - a.score || a.index - b.index)[0]?.line;
   if (merchant) $('#merchant').value = merchant;
   const categories = [
-    ['posto', 'Posto de gasolina'], ['combust', 'Posto de gasolina'], ['gasolina', 'Posto de gasolina'], ['etanol', 'Posto de gasolina'], ['diesel', 'Posto de gasolina'],
-    ['restaur', 'Restaurante'], ['lanchon', 'Restaurante'],
-    ['padaria', 'Padaria'], ['acougue', 'Mercado'], ['mercado', 'Mercado'], ['supermercado', 'Mercado'],
-    ['drogaria', 'Farmácia'], ['farmacia', 'Farmácia'], ['hospital', 'Saúde'], ['clinica', 'Saúde'],
-    ['uber', 'Transporte'], ['estacionamento', 'Estacionamento'], ['oficina', 'Manutenção do veículo'], ['auto pecas', 'Manutenção do veículo'], ['hotel', 'Hospedagem'],
+    [/\b(enel|sabesp|comgas|cpfl|equatorial|cemig|copel)\b|\b(conta|fatura)\s+(?:de\s+)?(energia|eletricidade|luz|agua|gas|internet|telefone)\b/, 'Contas de consumo'],
+    [/\b(posto|combustivel|gasolina|etanol|diesel|uber|estacionamento)\b/, 'Transporte'],
+    [/\b(restaurante|lanchonete|padaria|acougue|mercado|supermercado)\b/, 'Alimentação'],
+    [/\b(drogaria|farmacia|hospital|clinica)\b/, 'Saúde'],
+    [/\b(oficina|auto pecas|hotel)\b/, 'Prestadores de serviço'],
   ];
-  const normalizedText = normalizeText(text);
-  const category = categories.find(([term]) => normalizedText.includes(normalizeText(term)));
+  const category = categories.find(([pattern]) => pattern.test(normalizedText));
   if (category) $('#category').value = category[1];
 }
 
@@ -258,13 +307,18 @@ function normalizeAmount(value) {
 $('#receiptForm').onsubmit = event => {
   event.preventDefault();
   const amount = normalizeAmount($('#amount').value);
+  const date = parseDateValue($('#date').value);
   if (!Number.isFinite(amount) || amount <= 0) {
     toast('Informe um valor válido');
     return;
   }
+  if (!date) {
+    toast('Informe uma data válida no formato DD/MM/AAAA');
+    return;
+  }
   const receipt = {
     id: editingId || crypto.randomUUID(), amount, merchant: $('#merchant').value.trim(),
-    category: $('#category').value, date: $('#date').value, time: $('#time').value,
+    category: $('#category').value, paymentMethod: $('#paymentMethod').value, date, time: $('#time').value,
     note: $('#note').value.trim(), image: selectedImage, createdAt: Date.now(),
   };
   const transaction = db.transaction('receipts', 'readwrite');
@@ -291,7 +345,7 @@ function loadRecords() {
   };
 }
 
-const icons = { Restaurante: '☕', 'Posto de gasolina': '⛽', Mercado: '🛒', Transporte: '◌', Farmácia: '✚', Hospedagem: '⌂', Outros: '◈' };
+const icons = { Saúde: '✚', Alimentação: '☕', Transporte: '↔', 'Contas de consumo': '▤', 'Prestadores de serviço': '⌂' };
 function brl(value) { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value); }
 function formatDate(date, time) { return `${new Date(`${date}T12:00:00`).toLocaleDateString('pt-BR')} · ${time}`; }
 
@@ -336,7 +390,7 @@ function render() {
         element.className = 'receipt';
         element.innerHTML = `<div class="receipt-icon">${icons[receipt.category] || '◈'}</div><div class="receipt-main"><div class="receipt-name"></div><div class="receipt-meta"></div></div><div class="receipt-value">${brl(receipt.amount)}</div>`;
         element.querySelector('.receipt-name').textContent = receipt.merchant;
-        element.querySelector('.receipt-meta').textContent = `${receipt.category} · ${formatDate(receipt.date, receipt.time)}`;
+        element.querySelector('.receipt-meta').textContent = `${receipt.category} · ${receipt.paymentMethod || 'Forma de pagamento não informada'} · ${formatDate(receipt.date, receipt.time)}`;
         element.onclick = () => showRecord(receipt);
         group.appendChild(element);
       });
@@ -351,8 +405,9 @@ function showRecord(receipt) {
   openForm();
   $('#amount').value = receipt.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
   $('#merchant').value = receipt.merchant;
-  $('#category').value = receipt.category;
-  $('#date').value = receipt.date;
+  $('#category').value = normalizeCategory(receipt.category);
+  $('#paymentMethod').value = receipt.paymentMethod || '';
+  $('#date').value = formatDateInput(receipt.date);
   $('#time').value = receipt.time;
   $('#note').value = receipt.note;
   toast('Edite os dados e salve as alterações');
@@ -366,8 +421,8 @@ function exportCSV() {
   }
   // Aspas e ponto e vírgula preservam acentos e vírgulas no Excel.
   const escapeValue = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
-  const rows = [['Valor', 'Estabelecimento', 'Categoria', 'Data', 'Hora', 'Observação'], ...records.map(receipt => [
-    receipt.amount.toFixed(2).replace('.', ','), receipt.merchant, receipt.category,
+  const rows = [['Valor', 'Estabelecimento', 'Categoria', 'Forma de pagamento', 'Data', 'Hora', 'Observação'], ...records.map(receipt => [
+    receipt.amount.toFixed(2).replace('.', ','), receipt.merchant, normalizeCategory(receipt.category), receipt.paymentMethod || '',
     new Date(`${receipt.date}T12:00`).toLocaleDateString('pt-BR'), receipt.time, receipt.note,
   ])];
   const csv = rows.map(row => row.map(escapeValue).join(';')).join('\r\n');
