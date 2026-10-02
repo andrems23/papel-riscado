@@ -244,9 +244,11 @@ function parseReceipt(text) {
   }
   const timePattern = /\b([01]?\d|2[0-3]):([0-5]\d)(?::\d{2})?\b/;
   const linesWithTime = text.split(/\n+/).filter(line => timePattern.test(line));
-  const timeAndDateLine = linesWithTime.find(line => /\d{1,2}[/-]\d{1,2}[/-]\d{2,4}/.test(line));
+  const timeAndDateLine = [...linesWithTime].reverse().find(line => /\d{1,2}[/-]\d{1,2}[/-]\d{2,4}/.test(line));
   const explicitTimeLine = linesWithTime.find(line => /\b(hora|horario|emissao|emissão|data\s*\/\s*hora)\b/i.test(line));
-  const time = (timeAndDateLine || explicitTimeLine || linesWithTime.at(-1) || '').match(timePattern);
+  const timeLine = timeAndDateLine || explicitTimeLine || linesWithTime.at(-1) || '';
+  const lineTimes = [...timeLine.matchAll(new RegExp(timePattern.source, 'g'))];
+  const time = lineTimes.at(-1);
   if (time) $('#time').value = `${time[1].padStart(2, '0')}:${time[2]}`;
   const normalizeText = value => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const normalizedText = normalizeText(text);
