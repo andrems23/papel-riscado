@@ -50,16 +50,45 @@ $('#manualBtn').onclick = () => {
 };
 $('#galleryInput').onchange = event => handleFile(event.target.files[0]);
 $('#cameraInput').onchange = event => handleFile(event.target.files[0]);
-$('#date').addEventListener('input', event => {
+const dateInput = $('#date');
+function formatDateDigits(digits) {
+  const value = digits.slice(0, 8);
+  if (value.length <= 2) return value;
+  if (value.length <= 4) return `${value.slice(0, 2)}/${value.slice(2)}`;
+  return `${value.slice(0, 2)}/${value.slice(2, 4)}/${value.slice(4)}`;
+}
+function setDateDigits(digits, digitCursor) {
+  const value = formatDateDigits(digits);
+  const cursor = Math.min(digitCursor, digits.length)
+    + (digitCursor > 2 ? 1 : 0)
+    + (digitCursor > 4 ? 1 : 0);
+  dateInput.value = value;
+  dateInput.setSelectionRange(cursor, cursor);
+}
+// iOS' numeric keypad has no slash key, so insert separators while keeping
+// the caret stable. Treat backspace on a slash as deleting the preceding digit.
+dateInput.addEventListener('beforeinput', event => {
+  if (event.inputType !== 'deleteContentBackward' && event.inputType !== 'deleteContentForward') return;
+  const start = dateInput.selectionStart;
+  const end = dateInput.selectionEnd;
+  if (start !== end) return;
+  const digits = dateInput.value.replace(/\D/g, '');
+  let digitIndex = dateInput.value.slice(0, start).replace(/\D/g, '').length;
+  const atSlash = event.inputType === 'deleteContentBackward'
+    ? dateInput.value[start - 1] === '/'
+    : dateInput.value[start] === '/';
+  if (!atSlash) return;
+  event.preventDefault();
+  if (event.inputType === 'deleteContentBackward') digitIndex--;
+  const next = digits.slice(0, Math.max(0, digitIndex)) + digits.slice(Math.max(0, digitIndex) + 1);
+  setDateDigits(next, Math.max(0, digitIndex));
+});
+dateInput.addEventListener('input', event => {
   const input = event.currentTarget;
-  const digitsBeforeCursor = input.value.slice(0, input.selectionStart).replace(/\D/g, '').length;
+  const selection = input.selectionStart ?? input.value.length;
+  const digitsBeforeCursor = input.value.slice(0, selection).replace(/\D/g, '').length;
   const digits = input.value.replace(/\D/g, '').slice(0, 8);
-  const formatted = digits
-    .replace(/^(\d{2})(\d)/, '$1/$2')
-    .replace(/^(\d{2}\/\d{2})(\d)/, '$1/$2');
-  input.value = formatted;
-  const cursor = digitsBeforeCursor + (digitsBeforeCursor > 2 ? 1 : 0) + (digitsBeforeCursor > 4 ? 1 : 0);
-  input.setSelectionRange(cursor, cursor);
+  setDateDigits(digits, digitsBeforeCursor);
 });
 $('#closeDialog').onclick = () => $('#imageDialog').close();
 $('#previewButton').onclick = () => {
