@@ -50,6 +50,17 @@ $('#manualBtn').onclick = () => {
 };
 $('#galleryInput').onchange = event => handleFile(event.target.files[0]);
 $('#cameraInput').onchange = event => handleFile(event.target.files[0]);
+$('#date').addEventListener('input', event => {
+  const input = event.currentTarget;
+  const digitsBeforeCursor = input.value.slice(0, input.selectionStart).replace(/\D/g, '').length;
+  const digits = input.value.replace(/\D/g, '').slice(0, 8);
+  const formatted = digits
+    .replace(/^(\d{2})(\d)/, '$1/$2')
+    .replace(/^(\d{2}\/\d{2})(\d)/, '$1/$2');
+  input.value = formatted;
+  const cursor = digitsBeforeCursor + (digitsBeforeCursor > 2 ? 1 : 0) + (digitsBeforeCursor > 4 ? 1 : 0);
+  input.setSelectionRange(cursor, cursor);
+});
 $('#closeDialog').onclick = () => $('#imageDialog').close();
 $('#previewButton').onclick = () => {
   if (!selectedImage) return;
@@ -196,7 +207,7 @@ function normalizeCategory(category) {
   if (['transporte', 'posto de gasolina', 'estacionamento'].includes(normalized)) return 'Transporte';
   if (['contas de consumo', 'despesas da casa'].includes(normalized)) return 'Contas de consumo';
   if (['prestadores de servico', 'hospedagem', 'manutencao do veiculo'].includes(normalized)) return 'Prestadores de serviço';
-  return '';
+  return 'Outros';
 }
 
 function parseDateValue(value) {
@@ -347,7 +358,7 @@ function loadRecords() {
   };
 }
 
-const icons = { Saúde: '✚', Alimentação: '☕', Transporte: '↔', 'Contas de consumo': '▤', 'Prestadores de serviço': '⌂' };
+const icons = { Saúde: '✚', Alimentação: '☕', Transporte: '↔', 'Contas de consumo': '▤', 'Prestadores de serviço': '⌂', Outros: '◈' };
 function brl(value) { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value); }
 function formatDate(date, time) { return `${new Date(`${date}T12:00:00`).toLocaleDateString('pt-BR')} · ${time}`; }
 
