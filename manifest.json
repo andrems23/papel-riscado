@@ -1,7 +1,7 @@
 {
   "name": "Concilia",
   "short_name": "Concilia",
-  "description": "Controle de despesas com foto de recibo, leitura automática e exportação em CSV.",
+  "description": "Controle de despesas com fotos de recibos e exportação de planilha e imagens.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

@@ -455,26 +455,74 @@ function showRecord(receipt) {
   toast('Edite os dados e salve as alterações');
 }
 
-// Exporta os dados em CSV para uso em planilhas ou conferência.
-function exportCSV() {
+// Empacota a planilha e as fotos em um ZIP que pode ser salvo no app Arquivos.
+function createZip(files) {
+  const encoder = new TextEncoder();
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let bit = 0; bit < 8; bit++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    table[n] = c >>> 0;
+  }
+  const crc32 = bytes => {
+    let crc = 0xffffffff;
+    for (const byte of bytes) crc = table[(crc ^ byte) & 255] ^ (crc >>> 8);
+    return (crc ^ 0xffffffff) >>> 0;
+  };
+  const parts = [], central = [];
+  let offset = 0;
+  files.forEach(file => {
+    const name = encoder.encode(file.name), data = file.data, crc = crc32(data);
+    const local = new Uint8Array(30 + name.length), lv = new DataView(local.buffer);
+    lv.setUint32(0, 0x04034b50, true); lv.setUint16(4, 20, true); lv.setUint16(6, 0x0800, true);
+    lv.setUint32(14, crc, true); lv.setUint32(18, data.length, true); lv.setUint32(22, data.length, true);
+    lv.setUint16(26, name.length, true); local.set(name, 30); parts.push(local, data);
+    const dir = new Uint8Array(46 + name.length), dv = new DataView(dir.buffer);
+    dv.setUint32(0, 0x02014b50, true); dv.setUint16(4, 20, true); dv.setUint16(6, 20, true);
+    dv.setUint16(8, 0x0800, true); dv.setUint32(16, crc, true); dv.setUint32(20, data.length, true);
+    dv.setUint32(24, data.length, true); dv.setUint16(28, name.length, true); dv.setUint32(42, offset, true);
+    dir.set(name, 46); central.push(dir); offset += local.length + data.length;
+  });
+  const centralSize = central.reduce((sum, part) => sum + part.length, 0);
+  const end = new Uint8Array(22), ev = new DataView(end.buffer);
+  ev.setUint32(0, 0x06054b50, true); ev.setUint16(8, files.length, true); ev.setUint16(10, files.length, true);
+  ev.setUint32(12, centralSize, true); ev.setUint32(16, offset, true);
+  return new Blob([...parts, ...central, end], { type: 'application/zip' });
+}
+
+function imageBytes(dataUrl) {
+  const binary = atob(dataUrl.slice(dataUrl.indexOf(',') + 1));
+  return Uint8Array.from(binary, character => character.charCodeAt(0));
+}
+
+async function exportCSV() {
   if (!records.length) {
     toast('Não há lançamentos para exportar');
     return;
   }
   // Aspas e ponto e vírgula preservam acentos e vírgulas no Excel.
   const escapeValue = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
-  const rows = [['Valor', 'Estabelecimento', 'Categoria', 'Forma de pagamento', 'Data', 'Hora', 'Observação'], ...records.map(receipt => [
+  const files = [];
+  const photoNames = new Map();
+  records.forEach((receipt, index) => {
+    if (!receipt.image) return;
+    const name = `fotos/recibo-${String(index + 1).padStart(3, '0')}-${receipt.date}.jpg`;
+    photoNames.set(receipt.id, name);
+    files.push({ name, data: imageBytes(receipt.image) });
+  });
+  const rows = [['Valor', 'Estabelecimento', 'Categoria', 'Forma de pagamento', 'Data', 'Hora', 'Observação', 'Foto'], ...records.map(receipt => [
     receipt.amount.toFixed(2).replace('.', ','), receipt.merchant, normalizeCategory(receipt.category), receipt.paymentMethod || '',
-    new Date(`${receipt.date}T12:00`).toLocaleDateString('pt-BR'), receipt.time, receipt.note,
+    new Date(`${receipt.date}T12:00`).toLocaleDateString('pt-BR'), receipt.time, receipt.note, photoNames.get(receipt.id) || '',
   ])];
   const csv = rows.map(row => row.map(escapeValue).join(';')).join('\r\n');
-  const blob = new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8' });
+  files.unshift({ name: 'conciliacao.csv', data: new TextEncoder().encode(`\ufeff${csv}`) });
+  const blob = createZip(files);
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
-  link.download = `conciliacao-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.download = `conciliacao-${new Date().toISOString().slice(0, 10)}.zip`;
   link.click();
-  URL.revokeObjectURL(link.href);
-  toast('Planilha CSV baixada');
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  toast('Planilha e fotos exportadas em ZIP');
 }
 
 $('#deleteReceiptBtn').onclick = () => {

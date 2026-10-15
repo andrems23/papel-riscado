@@ -1,4 +1,4 @@
-const CACHE = 'concilia-v4';
+const CACHE = 'concilia-v5';
 
 // Guarda a interface.
 self.addEventListener('install', event => {
